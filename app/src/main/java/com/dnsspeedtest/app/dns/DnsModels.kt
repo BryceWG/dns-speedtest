@@ -130,6 +130,9 @@ data class UserSettings(
     val lastDomain: String = "www.example.com",
     val customServers: List<DnsServer> = emptyList(),
     val hiddenBuiltinServerIds: Set<String> = emptySet(),
+    val resultSortKey: String = ResultSortKey.FASTEST.name,
+    val resultSortAscending: Boolean = true,
+    val recentDomains: List<String> = emptyList(),
 )
 
 fun rcodeName(code: Int): String = when (code) {

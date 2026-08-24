@@ -7,6 +7,7 @@ import com.dnsspeedtest.app.data.HistoryRepository
 import com.dnsspeedtest.app.data.SettingsRepository
 import com.dnsspeedtest.app.dns.DnsProtocol
 import com.dnsspeedtest.app.dns.DnsQueryEngine
+import com.dnsspeedtest.app.dns.ResultSortKey
 import com.dnsspeedtest.app.dns.DnsQueryResult
 import com.dnsspeedtest.app.dns.DnsServer
 import com.dnsspeedtest.app.dns.DnsServerCatalog
@@ -48,6 +49,9 @@ data class DnsUiState(
     val showServerManager: Boolean = false,
     val editingServerId: String? = null,
     val addingServer: Boolean = false,
+    val resultSortKey: ResultSortKey = ResultSortKey.FASTEST,
+    val resultSortAscending: Boolean = true,
+    val recentDomains: List<String> = emptyList(),
     val message: String? = null,
 )
 
@@ -88,6 +92,11 @@ class DnsAppViewModel(application: Application) : AndroidViewModel(application) 
                         customServers = settings.customServers,
                         hiddenBuiltinServerIds = settings.hiddenBuiltinServerIds,
                         colorSchemeMode = settings.colorSchemeMode,
+                        resultSortKey = ResultSortKey.entries
+                            .firstOrNull { it.name == settings.resultSortKey }
+                            ?: ResultSortKey.FASTEST,
+                        resultSortAscending = settings.resultSortAscending,
+                        recentDomains = settings.recentDomains,
                     )
                 }
             }
@@ -119,9 +128,10 @@ class DnsAppViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    fun editingServer(): DnsServer? {
-        val id = _uiState.value.editingServerId ?: return null
-        return allServers().firstOrNull { it.id == id }
+    fun editingServer(): DnsServer? = serverById(_uiState.value.editingServerId)
+
+    fun serverById(id: String?): DnsServer? = id?.let { serverId ->
+        allServers().firstOrNull { it.id == serverId }
     }
 
     fun selectedServers(): List<DnsServer> {
@@ -160,6 +170,16 @@ class DnsAppViewModel(application: Application) : AndroidViewModel(application) 
     fun setReuseConnections(value: Boolean) {
         _uiState.update { it.copy(reuseConnections = value) }
         persist { it.copy(reuseConnections = value) }
+    }
+
+    fun setResultSortKey(key: ResultSortKey) {
+        _uiState.update { it.copy(resultSortKey = key) }
+        persist { it.copy(resultSortKey = key.name) }
+    }
+
+    fun setResultSortAscending(ascending: Boolean) {
+        _uiState.update { it.copy(resultSortAscending = ascending) }
+        persist { it.copy(resultSortAscending = ascending) }
     }
 
     fun setColorSchemeMode(mode: String) {
@@ -279,7 +299,17 @@ class DnsAppViewModel(application: Application) : AndroidViewModel(application) 
             return
         }
         val type = RecordType.entries.find { it.name == _uiState.value.recordType } ?: RecordType.A
-        persist { it.copy(lastDomain = domain) }
+        val recentDomains = (
+            listOf(domain) +
+                _uiState.value.recentDomains.filter { !it.equals(domain, ignoreCase = true) }
+            ).take(MAX_RECENT_DOMAINS)
+        _uiState.update { it.copy(recentDomains = recentDomains) }
+        persist {
+            it.copy(
+                lastDomain = domain,
+                recentDomains = recentDomains,
+            )
+        }
         queryJob?.cancel()
         queryJob = viewModelScope.launch {
             _uiState.update {
@@ -368,5 +398,9 @@ class DnsAppViewModel(application: Application) : AndroidViewModel(application) 
 
     private fun persist(transform: (UserSettings) -> UserSettings) {
         viewModelScope.launch { settingsRepository.update(transform) }
+    }
+
+    companion object {
+        private const val MAX_RECENT_DOMAINS = 20
     }
 }

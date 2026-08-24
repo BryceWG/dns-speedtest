@@ -1,13 +1,22 @@
 package com.dnsspeedtest.app.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -15,8 +24,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -35,6 +49,12 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.dnsspeedtest.app.dns.DnsQueryResult
 import com.dnsspeedtest.app.dns.HistorySession
 import com.dnsspeedtest.app.dns.RecordType
+import com.dnsspeedtest.app.dns.ResultSortKey
+import com.dnsspeedtest.app.dns.ServerQueryGroup
+import com.dnsspeedtest.app.dns.aggregateByServer
+import com.dnsspeedtest.app.dns.metricLabel
+import com.dnsspeedtest.app.dns.rankingBarFraction
+import com.dnsspeedtest.app.dns.sortServerGroups
 import com.dnsspeedtest.app.dns.answerGroups
 import com.dnsspeedtest.app.dns.answerSummary
 import com.dnsspeedtest.app.dns.fastestSuccessful
@@ -162,45 +182,119 @@ private fun DnsAppContent(
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { padding ->
-        when {
-            inServerEditor -> ServerEditorScreen(
-                server = viewModel.editingServer(),
-                adding = ui.addingServer,
-                visibleOnTest = ui.editingServerId?.let { it !in ui.hiddenBuiltinServerIds } ?: true,
-                padding = padding,
-                onSaveCustom = { server ->
-                    if (ui.addingServer) viewModel.addCustomServer(server) else viewModel.updateCustomServer(server)
-                },
-                onDeleteCustom = viewModel::removeCustomServer,
-                onVisibilityChange = viewModel::setBuiltinServerVisible,
-            )
-            ui.showServerManager -> ServerManagerScreen(
-                ui = ui,
-                padding = padding,
-                onOpenAdd = viewModel::openAddServer,
-                onOpenEdit = viewModel::openEditServer,
-            )
-            ui.selectedResult != null -> ResultScreen(
-                result = ui.selectedResult,
-                padding = padding,
-                onCopied = { viewModel.showMessage("已复制查询结果") },
-            )
-            ui.selectedSession != null -> SessionScreen(
-                session = ui.selectedSession,
-                padding = padding,
-                onOpenResult = viewModel::openResult,
-            )
-            ui.selectedTab == 1 -> HistoryScreen(ui = ui, padding = padding, onOpenSession = viewModel::openSession)
-            ui.selectedTab == 2 -> SettingsScreen(ui = ui, padding = padding, viewModel = viewModel)
-            else -> TestScreen(ui = ui, padding = padding, viewModel = viewModel)
+        val page = pageTarget(ui)
+        val testListState = rememberLazyListState()
+        val historyListState = rememberLazyListState()
+        val settingsListState = rememberLazyListState()
+        val serverManagerListState = rememberLazyListState()
+        AnimatedContent(
+            targetState = page,
+            modifier = Modifier.fillMaxSize(),
+            transitionSpec = {
+                val forward = targetState.depth > initialState.depth
+                val backward = targetState.depth < initialState.depth
+                when {
+                    forward -> {
+                        (slideInHorizontally(tween(280)) { it } + fadeIn(tween(180))) togetherWith
+                            (slideOutHorizontally(tween(280)) { -it / 5 } + fadeOut(tween(160)))
+                    }
+                    backward -> {
+                        (slideInHorizontally(tween(280)) { -it / 5 } + fadeIn(tween(180))) togetherWith
+                            (slideOutHorizontally(tween(280)) { it } + fadeOut(tween(160)))
+                    }
+                    else -> fadeIn(tween(160)) togetherWith fadeOut(tween(160))
+                }
+            },
+            contentKey = { it.key },
+            label = "page",
+            ) { target ->
+            when {
+                target.key == "server-add" || target.key.startsWith("server-edit") -> ServerEditorScreen(
+                    server = viewModel.serverById(target.editingServerId),
+                    adding = target.addingServer,
+                    visibleOnTest = target.editingServerId?.let { it !in ui.hiddenBuiltinServerIds } ?: true,
+                    padding = padding,
+                    onSaveCustom = { server ->
+                        if (target.addingServer) viewModel.addCustomServer(server) else viewModel.updateCustomServer(server)
+                    },
+                    onDeleteCustom = viewModel::removeCustomServer,
+                    onVisibilityChange = viewModel::setBuiltinServerVisible,
+                )
+                target.key == "server-manager" -> ServerManagerScreen(
+                    ui = ui,
+                    padding = padding,
+                    onOpenAdd = viewModel::openAddServer,
+                    onOpenEdit = viewModel::openEditServer,
+                    listState = serverManagerListState,
+                )
+                target.key == "result" && target.result != null -> ResultScreen(
+                    result = target.result,
+                    padding = padding,
+                    onCopied = { viewModel.showMessage("已复制查询结果") },
+                )
+                target.key == "session" && target.session != null -> SessionScreen(
+                    session = target.session,
+                    padding = padding,
+                    sortKey = ui.resultSortKey,
+                    sortAscending = ui.resultSortAscending,
+                    onOpenResult = viewModel::openResult,
+                )
+                target.key == "tab-1" -> HistoryScreen(
+                    ui = ui,
+                    padding = padding,
+                    listState = historyListState,
+                    onOpenSession = viewModel::openSession,
+                )
+                target.key == "tab-2" -> SettingsScreen(
+                    ui = ui,
+                    padding = padding,
+                    listState = settingsListState,
+                    viewModel = viewModel,
+                )
+                else -> TestScreen(
+                    ui = ui,
+                    padding = padding,
+                    listState = testListState,
+                    viewModel = viewModel,
+                )
+            }
         }
     }
+}
+
+private data class PageTarget(
+    val key: String,
+    val depth: Int,
+    val result: DnsQueryResult? = null,
+    val session: HistorySession? = null,
+    val addingServer: Boolean = false,
+    val editingServerId: String? = null,
+)
+
+private fun pageTarget(ui: DnsUiState): PageTarget = when {
+    ui.addingServer -> PageTarget("server-add", 2, addingServer = true)
+    ui.editingServerId != null -> PageTarget(
+        key = "server-edit",
+        depth = 2,
+        editingServerId = ui.editingServerId,
+    )
+    ui.showServerManager -> PageTarget("server-manager", 1)
+    ui.selectedResult != null && ui.selectedSession != null -> PageTarget(
+        key = "result",
+        depth = 2,
+        result = ui.selectedResult,
+        session = ui.selectedSession,
+    )
+    ui.selectedResult != null -> PageTarget("result", 1, result = ui.selectedResult)
+    ui.selectedSession != null -> PageTarget("session", 1, session = ui.selectedSession)
+    else -> PageTarget("tab-${ui.selectedTab}", 0)
 }
 
 @Composable
 private fun TestScreen(
     ui: DnsUiState,
     padding: PaddingValues,
+    listState: LazyListState,
     viewModel: DnsAppViewModel,
 ) {
     val recordTypes = RecordType.entries
@@ -215,7 +309,15 @@ private fun TestScreen(
     val visibleServers = viewModel.visibleServers()
     val fastest = fastestSuccessful(ui.results)
     val groups = answerGroups(ui.results)
+    val serverGroups = remember(ui.results, ui.resultSortKey, ui.resultSortAscending) {
+        sortServerGroups(aggregateByServer(ui.results), ui.resultSortKey, ui.resultSortAscending)
+    }
+    val fastestGroup = remember(ui.results) {
+        sortServerGroups(aggregateByServer(ui.results), ResultSortKey.FASTEST, ascending = true)
+            .firstOrNull { it.minMs != null }
+    }
     LazyColumn(
+        state = listState,
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(
             top = padding.calculateTopPadding() + 8.dp,
@@ -256,6 +358,18 @@ private fun TestScreen(
                     modifier = Modifier.fillMaxWidth().padding(12.dp),
                     enabled = !ui.running,
                 )
+                if (ui.recentDomains.isNotEmpty()) {
+                    OverlayDropdownPreference(
+                        title = "历史域名",
+                        summary = "选择后填入上方输入框",
+                        items = ui.recentDomains,
+                        selectedIndex = ui.recentDomains
+                            .indexOfFirst { it.equals(ui.domain, ignoreCase = true) }
+                            .coerceAtLeast(0),
+                        onSelectedIndexChange = { viewModel.setDomain(ui.recentDomains[it]) },
+                        enabled = !ui.running,
+                    )
+                }
                 OverlayDropdownPreference(
                     title = "记录类型",
                     items = recordTypes.map { it.label },
@@ -333,8 +447,11 @@ private fun TestScreen(
                     insideMargin = PaddingValues(16.dp),
                 ) {
                     Text(
-                        text = fastest?.let { "最快：${it.server.name} ${it.server.protocol.label()}  ${it.timings.totalMs.toMsLabel()}" }
-                            ?: "本轮没有成功结果",
+                        text = fastestGroup?.let {
+                            "最快：${it.server.name} ${it.server.protocol.label()}  ${it.minMs!!.toMsLabel()}"
+                        } ?: fastest?.let {
+                            "最快：${it.server.name} ${it.server.protocol.label()}  ${it.timings.totalMs.toMsLabel()}"
+                        } ?: "本轮没有成功结果",
                         style = MiuixTheme.textStyles.title4,
                     )
                     groups.forEach { (answers, servers) ->
@@ -349,8 +466,41 @@ private fun TestScreen(
                 }
             }
             item { SmallTitle(text = "结果") }
-            items(ui.results, key = { it.id }) { result ->
-                ResultCard(result = result, onClick = { viewModel.openResult(result) })
+            item {
+                Card(modifier = Modifier.sectionCard()) {
+                    Row(modifier = Modifier.fillMaxWidth()) {
+                        Box(modifier = Modifier.weight(1f)) {
+                            OverlayDropdownPreference(
+                                title = "依据",
+                                items = ResultSortKey.entries.map { it.label },
+                                selectedIndex = ResultSortKey.entries.indexOf(ui.resultSortKey).coerceAtLeast(0),
+                                onSelectedIndexChange = { viewModel.setResultSortKey(ResultSortKey.entries[it]) },
+                            )
+                        }
+                        Box(modifier = Modifier.weight(1f)) {
+                            OverlayDropdownPreference(
+                                title = "方向",
+                                items = listOf("升序", "降序"),
+                                selectedIndex = if (ui.resultSortAscending) 0 else 1,
+                                onSelectedIndexChange = { viewModel.setResultSortAscending(it == 0) },
+                            )
+                        }
+                    }
+                }
+            }
+            items(serverGroups, key = { it.server.id }) { group ->
+                ServerGroupCard(
+                    group = group,
+                    onOpenResult = viewModel::openResult,
+                )
+            }
+            item {
+                SmallTitle(text = "排名 · ${ui.resultSortKey.label}")
+                RankingBarChart(
+                    groups = serverGroups,
+                    sortKey = ui.resultSortKey,
+                    ascending = ui.resultSortAscending,
+                )
             }
         }
     }
@@ -360,9 +510,11 @@ private fun TestScreen(
 private fun HistoryScreen(
     ui: DnsUiState,
     padding: PaddingValues,
+    listState: LazyListState,
     onOpenSession: (HistorySession) -> Unit,
 ) {
     LazyColumn(
+        state = listState,
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(
             top = padding.calculateTopPadding() + 8.dp,
@@ -408,8 +560,13 @@ private fun HistoryScreen(
 private fun SessionScreen(
     session: HistorySession,
     padding: PaddingValues,
+    sortKey: ResultSortKey,
+    sortAscending: Boolean,
     onOpenResult: (DnsQueryResult) -> Unit,
 ) {
+    val serverGroups = remember(session.results, sortKey, sortAscending) {
+        sortServerGroups(aggregateByServer(session.results), sortKey, sortAscending)
+    }
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(
@@ -431,8 +588,16 @@ private fun SessionScreen(
                 )
             }
         }
-        items(session.results, key = { it.id }) { result ->
-            ResultCard(result = result, onClick = { onOpenResult(result) })
+        items(serverGroups, key = { it.server.id }) { group ->
+            ServerGroupCard(group = group, onOpenResult = onOpenResult)
+        }
+        item {
+            SmallTitle(text = "排名 · ${sortKey.label}")
+            RankingBarChart(
+                groups = serverGroups,
+                sortKey = sortKey,
+                ascending = sortAscending,
+            )
         }
     }
 }
@@ -441,12 +606,14 @@ private fun SessionScreen(
 private fun SettingsScreen(
     ui: DnsUiState,
     padding: PaddingValues,
+    listState: LazyListState,
     viewModel: DnsAppViewModel,
 ) {
     val timeoutOptions = listOf(3_000, 5_000, 8_000, 12_000, 20_000)
     val themeOptions = listOf("System", "Light", "Dark", "Monet")
     val themeLabels = listOf("跟随系统", "浅色", "深色", "动态色")
     LazyColumn(
+        state = listState,
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(
             top = padding.calculateTopPadding() + 8.dp,
@@ -639,9 +806,131 @@ private fun ResultScreen(
     }
 }
 
+@Composable
+private fun RankingBarChart(
+    groups: List<ServerQueryGroup>,
+    sortKey: ResultSortKey,
+    ascending: Boolean,
+) {
+    Card(
+        modifier = Modifier.sectionCard(),
+        insideMargin = PaddingValues(16.dp),
+    ) {
+        if (groups.isEmpty()) {
+            Text("暂无排名数据", color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+        } else {
+            groups.forEachIndexed { index, group ->
+                val fraction = rankingBarFraction(groups, sortKey, ascending, group)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = if (index == 0) 0.dp else 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "${index + 1}",
+                        modifier = Modifier.width(20.dp),
+                        style = MiuixTheme.textStyles.footnote1,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    )
+                    Text(
+                        text = group.server.name,
+                        modifier = Modifier.width(88.dp),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MiuixTheme.textStyles.body2,
+                    )
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(18.dp)
+                            .padding(horizontal = 8.dp),
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxHeight()
+                                .fillMaxWidth(fraction)
+                                .clip(RoundedCornerShape(9.dp))
+                                .background(MiuixTheme.colorScheme.primary),
+                        )
+                    }
+                    Text(
+                        text = group.metricLabel(sortKey),
+                        modifier = Modifier.width(72.dp),
+                        textAlign = TextAlign.End,
+                        style = MiuixTheme.textStyles.footnote1,
+                    )
+                }
+            }
+        }
+    }
+}
+
 private fun copyText(context: Context, text: String) {
     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
     clipboard.setPrimaryClip(ClipData.newPlainText("DNS 查询结果", text))
+}
+
+@Composable
+private fun ServerGroupCard(
+    group: ServerQueryGroup,
+    onOpenResult: (DnsQueryResult) -> Unit,
+) {
+    val latest = group.results.last()
+    Card(
+        modifier = Modifier.sectionCard(),
+        insideMargin = PaddingValues(16.dp),
+        pressFeedbackType = PressFeedbackType.Sink,
+        onClick = { onOpenResult(latest) },
+    ) {
+        Text(
+            "${group.server.name} · ${group.server.protocol.label()}",
+            style = MiuixTheme.textStyles.title4,
+        )
+        Text(
+            text = "${group.totalCount} 次查询 · 成功 ${group.successCount}/${group.totalCount} · 成功率 ${(group.successRate * 100).toInt()}%",
+            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+            style = MiuixTheme.textStyles.body2,
+        )
+        Text(
+            text = if (group.minMs != null) {
+                "最快 ${group.minMs.toMsLabel()}  ·  平均 ${group.avgMs?.toMsLabel()}  ·  最慢 ${group.maxMs?.toMsLabel()}" +
+                    (group.jitterMs?.let { "  ·  抖动 ${it.toMsLabel()}" } ?: "")
+            } else {
+                "没有成功的时延样本"
+            },
+            style = MiuixTheme.textStyles.body2,
+        )
+        Text(
+            text = if (group.answersStable) "解析：${group.answerSummary}" else group.answerSummary,
+            color = if (group.answersStable) {
+                MiuixTheme.colorScheme.onSurfaceVariantSummary
+            } else {
+                MiuixTheme.colorScheme.error
+            },
+            style = MiuixTheme.textStyles.body2,
+        )
+        if (group.results.size > 1) {
+            Spacer(Modifier.height(8.dp))
+            group.results.forEach { result ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onOpenResult(result) }
+                        .padding(top = 6.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("第 ${result.round} 轮", style = MiuixTheme.textStyles.body2)
+                    Text(
+                        text = if (result.success) result.timings.totalMs.toMsLabel() else "失败",
+                        color = if (result.success) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.error,
+                        style = MiuixTheme.textStyles.body2,
+                    )
+                }
+            }
+        }
+    }
 }
 
 @Composable

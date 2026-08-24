@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -21,6 +23,7 @@ import com.dnsspeedtest.app.dns.DnsProtocol
 import com.dnsspeedtest.app.dns.DnsServer
 import com.dnsspeedtest.app.dns.DnsServerCatalog
 import com.dnsspeedtest.app.dns.isCustom
+import top.yukonga.miuix.kmp.basic.BasicComponentDefaults
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
@@ -38,9 +41,14 @@ fun ServerManagerScreen(
     padding: PaddingValues,
     onOpenAdd: () -> Unit,
     onOpenEdit: (String) -> Unit,
+    listState: LazyListState = rememberLazyListState(),
 ) {
     val hidden = ui.hiddenBuiltinServerIds
+    val mutedTitle = BasicComponentDefaults.titleColor(
+        color = MiuixTheme.colorScheme.onBackground.copy(alpha = 0.30f),
+    )
     LazyColumn(
+        state = listState,
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(
             top = padding.calculateTopPadding() + 8.dp,
@@ -54,6 +62,11 @@ fun ServerManagerScreen(
                     val visibleOnTest = server.id !in hidden
                     ArrowPreference(
                         title = "${server.name} · ${server.protocol.label()}",
+                        titleColor = if (visibleOnTest) {
+                            BasicComponentDefaults.titleColor()
+                        } else {
+                            mutedTitle
+                        },
                         summary = if (visibleOnTest) {
                             "显示在测试页 · ${server.endpointLabel()}"
                         } else {
