@@ -15,3 +15,4 @@
 .kotlin
 /app/build
 local.properties
+.icon-tools/node_modules

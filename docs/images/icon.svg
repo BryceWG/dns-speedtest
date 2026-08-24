@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1254 1254" role="img" aria-labelledby="title desc">
+  <title id="title">Global Network Monitoring Icon</title>
+  <desc id="desc">A blue wireframe globe with cyan network nodes and a magnifying glass containing a monitoring pulse.</desc>
+
+  <defs>
+    <linearGradient id="blue" x1="280" y1="160" x2="980" y2="1090" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0759d8"/>
+      <stop offset="1" stop-color="#053db6"/>
+    </linearGradient>
+    <linearGradient id="cyan" x1="770" y1="760" x2="930" y2="920" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#08e4ed"/>
+      <stop offset="1" stop-color="#00cbdc"/>
+    </linearGradient>
+    <filter id="softGlow" x="-35%" y="-35%" width="170%" height="170%">
+      <feGaussianBlur stdDeviation="5" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <mask id="globeMask" maskUnits="userSpaceOnUse" x="110" y="110" width="1040" height="1040">
+      <rect x="110" y="110" width="1040" height="1040" fill="white"/>
+      <circle cx="844" cy="835" r="151" fill="black"/>
+    </mask>
+  </defs>
+
+  <!-- Globe -->
+  <g fill="none" stroke="url(#blue)" stroke-width="41" stroke-linecap="round" stroke-linejoin="round" mask="url(#globeMask)">
+    <circle cx="599" cy="602" r="436"/>
+    <path d="M599 166C465 211 364 387 364 602s101 391 235 436"/>
+    <path d="M599 166c134 45 235 221 235 436s-101 391-235 436"/>
+    <path d="M599 166v872"/>
+    <path d="M278 334c78 72 195 98 321 98s243-26 321-98"/>
+    <path d="M278 870c78-72 195-98 321-98s243 26 321 98"/>
+    <path d="M163 602h872"/>
+  </g>
+
+  <!-- Network links -->
+  <g fill="none" stroke="url(#blue)" stroke-width="37" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M397 394L599 431"/>
+    <path d="M599 604L831 540"/>
+    <path d="M397 816L599 774"/>
+  </g>
+
+  <!-- Network nodes -->
+  <g stroke="url(#blue)" stroke-width="32">
+    <circle cx="397" cy="394" r="47" fill="url(#blue)"/>
+    <circle cx="831" cy="540" r="47" fill="url(#blue)"/>
+    <circle cx="599" cy="604" r="48" fill="url(#blue)"/>
+    <circle cx="397" cy="816" r="47" fill="url(#blue)"/>
+  </g>
+  <g fill="url(#cyan)" filter="url(#softGlow)">
+    <circle cx="397" cy="394" r="31"/>
+    <circle cx="831" cy="540" r="31"/>
+    <circle cx="599" cy="604" r="32"/>
+    <circle cx="397" cy="816" r="31"/>
+  </g>
+
+  <!-- Magnifying glass -->
+  <g fill="none" stroke="url(#blue)" stroke-width="41" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="844" cy="835" r="169"/>
+    <path d="M965 956l31 31"/>
+    <path d="M1002 970l109 109c14 14 14 37 0 51s-37 14-51 0L951 1021c-14-14-14-37 0-51s37-14 51 0z"/>
+  </g>
+
+  <!-- Monitoring pulse -->
+  <path d="M731 844h52l17 31 39-115 50 149 35-70h52"
+        fill="none" stroke="url(#cyan)" stroke-width="34"
+        stroke-linecap="round" stroke-linejoin="round" filter="url(#softGlow)"/>
+</svg>
